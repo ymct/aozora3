@@ -1,3 +1,166 @@
+/* ダークモードをデフォルトに設定 */
+:root {
+    --bg-color: #0a0a0a;
+    --text-color: #f0f0f0;
+    --subdued-color: #aaa;
+    --accent-color: #4a8fff;
+    --border-color: #333;
+    --card-bg: #1a1a1a;
+    --card-hover-shadow: rgba(80, 120, 255, 0.2);
+    --header-bg: rgba(15, 15, 15, 0.8);
+    --footer-bg: rgba(15, 15, 15, 0.8);
+    --overlay-bg: rgba(0, 0, 0, 0.7);
+    --button-bg: rgba(50, 50, 50, 0.8);
+    --button-border: rgba(100, 100, 100, 0.4);
+    --button-hover-bg: rgba(70, 70, 70, 0.9);
+}
+
+/* 全体のスタイル */
+body { 
+    margin: 0; 
+    padding: 0;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: "Yu Mincho", "MS Mincho", "Hiragino Mincho ProN", serif;
+    line-height: 1.6;
+}
+
+/* コンテナー */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* ヘッダー */
+header {
+    text-align: center;
+    margin-bottom: 50px;
+    padding: 30px 0;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--header-bg);
+}
+
+h1 {
+    font-size: 36px;
+    font-weight: normal;
+    letter-spacing: 0.2em;
+    margin: 0;
+}
+
+.subtitle {
+    font-size: 16px;
+    color: var(--subdued-color);
+    margin-top: 10px;
+    letter-spacing: 0.1em;
+}
+
+/* ギャラリー */
+.gallery {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    gap: 40px;
+}
+
+.work-card {
+    width: 300px;
+    transition: transform 0.3s, box-shadow 0.3s;
+    position: relative;
+    cursor: pointer;
+    margin-bottom: 30px;
+    background-color: var(--card-bg);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.work-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px var(--card-hover-shadow);
+}
+
+.thumbnail {
+    width: 100%;
+    height: 200px;
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.thumbnail img, .thumbnail canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.work-title {
+    margin-top: 15px;
+    font-size: 20px;
+    text-align: center;
+    padding: 0 10px;
+}
+
+.author {
+    text-align: center;
+    font-size: 14px;
+    color: var(--subdued-color);
+    margin-top: 5px;
+    padding-bottom: 15px;
+}
+
+.overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 200px; /* サムネイルの高さに合わせる */
+    background: var(--overlay-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.work-card:hover .overlay {
+    opacity: 1;
+}
+
+.view-button {
+    padding: 8px 16px;
+    background: var(--button-bg);
+    border: 1px solid var(--button-border);
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.3s;
+    border-radius: 4px;
+}
+
+.view-button:hover {
+    background: var(--button-hover-bg);
+}
+
+/* フッター */
+footer {
+    text-align: center;
+    margin-top: 100px;
+    padding: 20px;
+    font-size: 12px;
+    color: var(--subdued-color);
+    border-top: 1px solid var(--border-color);
+    background-color: var(--footer-bg);
+}
+
+.github-link a {
+    color: var(--accent-color);
+    text-decoration: none;
+}
+
+.github-link a:hover {
+    text-decoration: underline;
+}
+
 /* 3D表示ページ用のスタイル */
 .work-container {
     position: relative;
@@ -19,25 +182,26 @@
     left: 20px;
     z-index: 10;
     padding: 8px 16px;
-    background: rgba(0, 0, 0, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: var(--button-bg);
+    border: 1px solid var(--button-border);
     color: white;
     font-size: 14px;
     cursor: pointer;
     transition: background 0.3s;
     text-decoration: none;
+    border-radius: 4px;
 }
 
 .back-button:hover {
-    background: rgba(0, 0, 0, 0.8);
+    background: var(--button-hover-bg);
 }
 
 .work-info {
     position: absolute;
     bottom: 20px;
     left: 20px;
-    background: rgba(0, 0, 0, 0.7);
-    color: #ddd;
+    background: var(--overlay-bg);
+    color: var(--text-color);
     padding: 15px;
     border-radius: 5px;
     max-width: 400px;
@@ -49,15 +213,129 @@
     top: 20px;
     width: 100%;
     text-align: center;
-    color: #fff;
+    color: var(--text-color);
     font-size: 24px;
     letter-spacing: 0.1em;
     z-index: 5;
     text-shadow: 0 0 4px #000;
+    padding: 0 70px; /* 左右の余白を確保してボタンと被らないようにする */
+    box-sizing: border-box;
 }
 
 .quote {
     font-style: italic;
     margin: 10px 0;
-    color: #aaa;
+    color: var(--subdued-color);
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 960px) {
+    .gallery {
+        justify-content: center;
+    }
+    .work-card {
+        width: 280px;
+    }
+}
+
+@media (max-width: 768px) {
+    h1 {
+        font-size: 28px;
+    }
+    
+    .work-title-header {
+        font-size: 18px;
+        top: 20px;
+        padding: 0 80px; /* モバイルでより広い余白を確保 */
+        line-height: 1.3;
+    }
+    
+    .work-info {
+        max-width: 85%;
+        font-size: 14px;
+        padding: 10px;
+        bottom: 10px;
+        left: 10px;
+    }
+    
+    .back-button {
+        top: 15px;
+        left: 15px;
+        padding: 8px 12px;
+        font-size: 13px;
+        z-index: 20; /* タイトルより上に表示 */
+    }
+    
+    .overlay {
+        height: 180px; /* スマホ用にサムネイル高さ調整 */
+    }
+    
+    .thumbnail {
+        height: 180px;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 10px;
+    }
+    
+    h1 {
+        font-size: 24px;
+        letter-spacing: 0.1em;
+    }
+    
+    .subtitle {
+        font-size: 14px;
+    }
+    
+    .work-card {
+        width: 90%;
+        max-width: 320px;
+    }
+    
+    .work-title-header {
+        font-size: 16px;
+        padding: 0 70px;
+    }
+    
+    .back-button {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+}
+
+/* 情報ボタン */
+.info-toggle {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: var(--button-bg);
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    z-index: 10;
+    border: 1px solid var(--button-border);
+    font-size: 16px;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.info-toggle:hover {
+    background-color: var(--button-hover-bg);
+}
+
+@media (max-width: 480px) {
+    .info-toggle {
+        bottom: 15px;
+        right: 15px;
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
 }
