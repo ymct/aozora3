@@ -19,17 +19,6 @@
             opacity: 0;
             transition: opacity 0.2s;
         }
-        .interaction-hint {
-            position: absolute;
-            bottom: 70px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.6);
-            color: white;
-            padding: 8px 15px;
-            border-radius: 5px;
-            font-size: 14px;
-            z-index: 10;
-        }
     </style>
 </head>
 <body>
@@ -39,8 +28,6 @@
         <div class="canvas-container">
             <canvas id="canvas"></canvas>
         </div>
-        
-        <div class="interaction-hint">オブジェクトをクリック/タッチして反応を見る</div>
         
         <div class="work-info">
             <p class="quote">「恥の多い生涯を送って来ました。」</p>
@@ -68,6 +55,10 @@
         let cubes = [];
         let lines = [];
         let intersectedObject = null;
+        let selectedObject = null;
+        let isDragging = false;
+        let dragStartPosition = { x: 0, y: 0 };
+        let objectStartPosition = { x: 0, y: 0, z: 0 };
         let originalColors = new Map();
         const tooltip = document.getElementById('tooltip');
         
@@ -82,8 +73,11 @@
             // マウス/タッチイベントのリスナーを設定
             const canvas = document.getElementById('canvas');
             canvas.addEventListener('mousemove', onMouseMove);
-            canvas.addEventListener('click', onClick);
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mouseup', onMouseUp);
             canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+            canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+            canvas.addEventListener('touchend', onTouchEnd);
             
             // 共通設定
             handleResize(cameras, renderers);
@@ -99,17 +93,51 @@
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             
-            checkIntersection();
+            if (isDragging && selectedObject) {
+                handleDrag(event.clientX, event.clientY);
+            } else {
+                checkIntersection();
+            }
         }
         
-        // クリック時の処理
-        function onClick(event) {
+        // マウスダウン時の処理
+        function onMouseDown(event) {
             event.preventDefault();
             
+            // マウス位置を正規化
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            checkIntersection();
+            
             if (intersectedObject) {
-                animateClickedObject(intersectedObject);
-                showTooltipForObject(intersectedObject, event.clientX, event.clientY);
+                isDragging = true;
+                selectedObject = intersectedObject;
+                
+                // ドラッグ開始位置を記録
+                dragStartPosition.x = event.clientX;
+                dragStartPosition.y = event.clientY;
+                
+                // オブジェクトの元の位置を記録
+                objectStartPosition.x = selectedObject.position.x;
+                objectStartPosition.y = selectedObject.position.y;
+                objectStartPosition.z = selectedObject.position.z;
+                
+                showTooltipForObject(selectedObject, event.clientX, event.clientY);
             }
+        }
+        
+        // マウスアップ時の処理
+        function onMouseUp(event) {
+            event.preventDefault();
+            
+            if (isDragging && selectedObject) {
+                // ドラッグ終了時のアニメーション
+                animateRelease(selectedObject);
+            }
+            
+            isDragging = false;
+            selectedObject = null;
         }
         
         // タッチ開始時の処理
@@ -126,8 +154,318 @@
                 checkIntersection();
                 
                 if (intersectedObject) {
-                    animateClickedObject(intersectedObject);
-                    showTooltipForObject(intersectedObject, touch.clientX, touch.clientY);
+                    isDragging = true;
+                    selectedObject = intersectedObject;
+                    
+                    // ドラッグ開始位置を記録
+                    dragStartPosition.x = touch.clientX;
+                    dragStartPosition.y = touch.clientY;
+                    
+                    // オブジェクトの元の位置を記録
+                    objectStartPosition.x = selectedObject.position.x;
+                    objectStartPosition.y = selectedObject.position.y;
+                    objectStartPosition.z = selectedObject.position.z;
+                    
+                    showTooltipForObject(selectedObject, touch.clientX, touch.clientY);
+                }
+            }
+        }
+        
+        // タッチ移動時の処理
+        function onTouchMove(event) {
+            event.preventDefault();
+            
+            if (isDragging && selectedObject && event.touches.length > 0) {
+                const touch = event.touches[0];
+                
+                // タッチ位置を正規化
+                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+                
+                handleDrag(touch.clientX, touch.clientY);
+            }
+        }
+        
+        // タッチ終了時の処理
+        function onTouchEnd(event) {
+            event.preventDefault();
+            
+            if (isDragging && selectedObject) {
+                // ドラッグ終了時のアニメーション
+                animateRelease(selectedObject);
+            }
+            
+            isDragging = false;
+            selectedObject = null;
+        }
+        
+        // ドラッグ処理
+        function handleDrag(clientX, clientY) {
+            // 画面座標の変化量を計算
+            const deltaX = clientX - dragStartPosition.x;
+            const deltaY = clientY - dragStartPosition.y;
+            
+            // 画面の大きさに応じて移動量を調整
+            const moveSpeed = 0.01;
+            const moveX = deltaX * moveSpeed;
+            const moveY = -deltaY * moveSpeed; // Y軸は反転
+            
+            // レイキャスターでドラッグ方向を3D空間に投影
+            raycaster.setFromCamera(mouse, cameras[0]);
+            const movementDirection = new THREE.Vector3(moveX, moveY, 0);
+            
+            // カメラの向きに合わせて移動方向を調整
+            const cameraMatrix = new THREE.Matrix4().extractRotation(cameras[0].matrixWorld);
+            movementDirection.applyMatrix4(cameraMatrix);
+            
+            // 選択されたオブジェクトの移動
+            if (selectedObject === innerSphere) {
+                // 黒い球体を移動
+                selectedObject.position.x = objectStartPosition.x + moveX * 5;
+                selectedObject.position.y = objectStartPosition.y + moveY * 5;
+                
+                // 連動して動く要素:
+                
+                // 1. 仮面が内面に追従するが、少し遅れて
+                const maskLagFactor = 0.7;
+                mask.position.x = Math.cos(mask.userData.time * 0.15) * 2.5 + selectedObject.position.x * maskLagFactor;
+                mask.position.y = selectedObject.position.y * maskLagFactor;
+                
+                // 2. 赤い線の起点も移動
+                lines.forEach(line => {
+                    const positions = line.line.geometry.attributes.position.array;
+                    const angle = line.angle;
+                    
+                    positions[0] = Math.cos(angle) * 2 + selectedObject.position.x;
+                    positions[1] = Math.sin(angle) * 2 + selectedObject.position.y;
+                    
+                    line.line.geometry.attributes.position.needsUpdate = true;
+                });
+                
+            } else if (selectedObject === mask) {
+                // 仮面を移動
+                selectedObject.position.x = objectStartPosition.x + moveX * 5;
+                selectedObject.position.y = objectStartPosition.y + moveY * 5;
+                
+                // 内面も少し引っ張られる
+                innerSphere.position.x += moveX * 1.5;
+                innerSphere.position.y += moveY * 1.5;
+                
+            } else if (selectedObject === wall) {
+                // 壁を移動
+                selectedObject.position.z = objectStartPosition.z + (moveX + moveY) * 5;
+                
+                // 他者（立方体）も壁と共に動く
+                cubes.forEach(cube => {
+                    const distanceEffect = 1 - Math.min(1, Math.abs(cube.mesh.position.z - objectStartPosition.z) / 10);
+                    cube.mesh.position.z += (moveX + moveY) * 5 * distanceEffect;
+                });
+                
+            } else {
+                // 立方体の移動と連動
+                const cube = cubes.find(c => c.mesh === selectedObject);
+                if (cube) {
+                    selectedObject.position.x = objectStartPosition.x + moveX * 7;
+                    selectedObject.position.y = objectStartPosition.y + moveY * 7;
+                    selectedObject.position.z = objectStartPosition.z + (moveX + moveY) * 3;
+                    
+                    // 近くの立方体も少し引っ張られる
+                    cubes.forEach(otherCube => {
+                        if (otherCube.mesh !== selectedObject) {
+                            const distance = selectedObject.position.distanceTo(otherCube.mesh.position);
+                            const influence = Math.max(0, 1 - distance / 5);
+                            
+                            if (influence > 0) {
+                                otherCube.mesh.position.x += moveX * 3 * influence;
+                                otherCube.mesh.position.y += moveY * 3 * influence;
+                            }
+                        }
+                    });
+                }
+            }
+        }
+        
+        // ドラッグ終了時のアニメーション
+        function animateRelease(object) {
+            if (object === innerSphere) {
+                // 内面球体のリリースアニメーション
+                const originalPosition = { x: 0, y: 0, z: 0 };
+                const currentPosition = { 
+                    x: object.position.x, 
+                    y: object.position.y, 
+                    z: object.position.z 
+                };
+                const duration = 1000; // ミリ秒
+                const startTime = Date.now();
+                
+                function returnToCenter() {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    // 弾性のあるイージング関数
+                    const easeOutElastic = t => {
+                        const p = 0.3;
+                        return Math.pow(2, -10 * t) * Math.sin((t - p / 4) * (2 * Math.PI) / p) + 1;
+                    };
+                    
+                    const t = easeOutElastic(progress);
+                    
+                    // 位置を元に戻す
+                    object.position.x = currentPosition.x * (1 - t);
+                    object.position.y = currentPosition.y * (1 - t);
+                    object.position.z = currentPosition.z * (1 - t);
+                    
+                    // 仮面も追従
+                    mask.position.x = Math.cos(mask.userData.time * 0.15) * 2.5 + object.position.x * 0.7;
+                    mask.position.y = object.position.y * 0.7;
+                    
+                    // 赤い線も追従
+                    lines.forEach(line => {
+                        const positions = line.line.geometry.attributes.position.array;
+                        const angle = line.angle;
+                        
+                        positions[0] = Math.cos(angle) * 2 + object.position.x;
+                        positions[1] = Math.sin(angle) * 2 + object.position.y;
+                        
+                        line.line.geometry.attributes.position.needsUpdate = true;
+                    });
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(returnToCenter);
+                    }
+                }
+                
+                returnToCenter();
+            } else if (object === mask) {
+                // 仮面のリリースアニメーション
+                const originalPosition = { x: 0, y: 0, z: -2.5 };
+                const currentPosition = { 
+                    x: object.position.x, 
+                    y: object.position.y, 
+                    z: object.position.z 
+                };
+                const duration = 1000; // ミリ秒
+                const startTime = Date.now();
+                
+                function returnToOrbit() {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    // バウンスのあるイージング関数
+                    const easeOutBounce = t => {
+                        if (t < 1/2.75) {
+                            return 7.5625 * t * t;
+                        } else if (t < 2/2.75) {
+                            const t2 = t - 1.5/2.75;
+                            return 7.5625 * t2 * t2 + 0.75;
+                        } else if (t < 2.5/2.75) {
+                            const t2 = t - 2.25/2.75;
+                            return 7.5625 * t2 * t2 + 0.9375;
+                        } else {
+                            const t2 = t - 2.625/2.75;
+                            return 7.5625 * t2 * t2 + 0.984375;
+                        }
+                    };
+                    
+                    const t = easeOutBounce(progress);
+                    
+                    // 位置を軌道に戻す（y座標は0に）
+                    object.position.y = currentPosition.y * (1 - t);
+                    
+                    // x, z座標は円軌道に
+                    const time = mask.userData.time;
+                    object.position.x = Math.cos(time * 0.15) * 2.5 * t + currentPosition.x * (1 - t);
+                    object.position.z = Math.sin(time * 0.15) * 2.5 * t + currentPosition.z * (1 - t);
+                    
+                    // 内面球体も元に戻す
+                    innerSphere.position.x *= (1 - t * 0.05);
+                    innerSphere.position.y *= (1 - t * 0.05);
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(returnToOrbit);
+                    }
+                }
+                
+                returnToOrbit();
+            } else if (object === wall) {
+                // 壁のリリースアニメーション
+                const originalPosition = { x: 0, y: 0, z: -5 };
+                const currentPosition = { 
+                    x: object.position.x, 
+                    y: object.position.y, 
+                    z: object.position.z 
+                };
+                const duration = 800; // ミリ秒
+                const startTime = Date.now();
+                
+                function returnToPosition() {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    // イージング関数
+                    const easeOutQuad = t => t * (2 - t);
+                    const t = easeOutQuad(progress);
+                    
+                    // 位置を元に戻す
+                    object.position.z = currentPosition.z * (1 - t) + originalPosition.z * t;
+                    
+                    // 他者（立方体）も追従して元に戻る
+                    cubes.forEach(cube => {
+                        const distanceEffect = 1 - Math.min(1, Math.abs(cube.originalZ - originalPosition.z) / 10);
+                        cube.mesh.position.z += (originalPosition.z - cube.mesh.position.z) * 0.1 * distanceEffect * t;
+                    });
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(returnToPosition);
+                    }
+                }
+                
+                returnToPosition();
+            } else {
+                // 立方体のリリースアニメーション
+                const cube = cubes.find(c => c.mesh === object);
+                if (cube) {
+                    const duration = 1200; // ミリ秒
+                    const startTime = Date.now();
+                    
+                    function returnToOrbit() {
+                        const elapsed = Date.now() - startTime;
+                        const progress = Math.min(elapsed / duration, 1);
+                        
+                        // 弾性のあるイージング関数
+                        const easeOutElastic = t => {
+                            const p = 0.3;
+                            return Math.pow(2, -10 * t) * Math.sin((t - p / 4) * (2 * Math.PI) / p) + 1;
+                        };
+                        
+                        const t = progress < 0.5 ? progress * 2 : 0.5 + easeOutElastic((progress - 0.5) * 2) * 0.5;
+                        
+                        // 軌道に戻す
+                        const targetX = Math.cos(cube.angle) * cube.radius;
+                        const targetY = cube.verticalPos;
+                        const targetZ = -3 - Math.random() * 0.5 + Math.sin(cube.angle * 0.03) * 1.5;
+                        
+                        object.position.x = object.position.x * (1 - t * 0.1) + targetX * (t * 0.1);
+                        object.position.y = object.position.y * (1 - t * 0.1) + targetY * (t * 0.1);
+                        object.position.z = object.position.z * (1 - t * 0.1) + targetZ * (t * 0.1);
+                        
+                        // 近くの立方体も徐々に元に戻る
+                        cubes.forEach(otherCube => {
+                            if (otherCube.mesh !== object) {
+                                const originalX = Math.cos(otherCube.angle) * otherCube.radius;
+                                const originalY = otherCube.verticalPos;
+                                
+                                otherCube.mesh.position.x += (originalX - otherCube.mesh.position.x) * 0.05 * t;
+                                otherCube.mesh.position.y += (originalY - otherCube.mesh.position.y) * 0.05 * t;
+                            }
+                        });
+                        
+                        if (progress < 1) {
+                            requestAnimationFrame(returnToOrbit);
+                        }
+                    }
+                    
+                    returnToOrbit();
                 }
             }
         }
@@ -135,7 +473,7 @@
         // 交差判定
         function checkIntersection() {
             // 前回の交差オブジェクトの色を元に戻す
-            if (intersectedObject && originalColors.has(intersectedObject.uuid)) {
+            if (intersectedObject && !isDragging && originalColors.has(intersectedObject.uuid)) {
                 if (intersectedObject.material) {
                     intersectedObject.material.color.set(originalColors.get(intersectedObject.uuid));
                     intersectedObject.material.emissive?.set(0x000000);
@@ -155,7 +493,7 @@
             intersectedObject = intersects.length > 0 ? intersects[0].object : null;
             
             // 交差したオブジェクトの色を変更
-            if (intersectedObject && intersectedObject.material) {
+            if (intersectedObject && !isDragging && intersectedObject.material) {
                 // 元の色を保存
                 if (!originalColors.has(intersectedObject.uuid)) {
                     originalColors.set(intersectedObject.uuid, intersectedObject.material.color.clone());
@@ -163,173 +501,12 @@
                 
                 // ハイライト色
                 intersectedObject.material.emissive?.set(0x202020);
-                document.body.style.cursor = 'pointer';
-            } else {
+                document.body.style.cursor = 'grab';
+            } else if (!isDragging) {
                 document.body.style.cursor = 'default';
-            }
-        }
-        
-        // クリックしたオブジェクトのアニメーション
-        function animateClickedObject(object) {
-            // オブジェクトによって異なるアニメーション
-            if (object === innerSphere) {
-                // 黒い球体の場合
-                animatePulse(object, 1.2);
-            } else if (object === mask) {
-                // 仮面の場合
-                animateRotation(object, Math.PI * 2);
-            } else if (object === wall) {
-                // 壁の場合
-                animateOpacity(object, 0.1, 0.6);
             } else {
-                // 立方体の場合
-                const cube = cubes.find(c => c.mesh === object);
-                if (cube) {
-                    animateScale(object, 1.5);
-                    
-                    // 立方体の色を一時的に変更
-                    const originalColor = object.material.color.clone();
-                    object.material.color.set(0x7090ff);
-                    
-                    setTimeout(() => {
-                        object.material.color.copy(originalColor);
-                    }, 1000);
-                }
+                document.body.style.cursor = 'grabbing';
             }
-        }
-        
-        // パルスアニメーション（拡大と縮小）
-        function animatePulse(object, scale) {
-            const originalScale = { x: object.scale.x, y: object.scale.y, z: object.scale.z };
-            const duration = 1000; // ミリ秒
-            const startTime = Date.now();
-            
-            function pulse() {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                
-                // イージング関数で滑らかに
-                const easeOutBack = t => 1 + (--t) * t * ((2.5 + 1) * t + 2.5);
-                
-                if (progress < 0.5) {
-                    // 拡大
-                    const t = easeOutBack(progress * 2);
-                    object.scale.set(
-                        originalScale.x + (scale - 1) * originalScale.x * t,
-                        originalScale.y + (scale - 1) * originalScale.y * t,
-                        originalScale.z + (scale - 1) * originalScale.z * t
-                    );
-                } else {
-                    // 縮小
-                    const t = easeOutBack((progress - 0.5) * 2);
-                    object.scale.set(
-                        originalScale.x + (scale - 1) * originalScale.x * (1 - t),
-                        originalScale.y + (scale - 1) * originalScale.y * (1 - t),
-                        originalScale.z + (scale - 1) * originalScale.z * (1 - t)
-                    );
-                }
-                
-                if (progress < 1) {
-                    requestAnimationFrame(pulse);
-                }
-            }
-            
-            pulse();
-        }
-        
-        // 回転アニメーション
-        function animateRotation(object, angle) {
-            const originalRotation = object.rotation.z;
-            const duration = 1000; // ミリ秒
-            const startTime = Date.now();
-            
-            function rotate() {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                
-                // イージング関数
-                const easeOutCirc = t => Math.sqrt(1 - Math.pow(t - 1, 2));
-                const t = easeOutCirc(progress);
-                
-                object.rotation.z = originalRotation + angle * t;
-                
-                if (progress < 1) {
-                    requestAnimationFrame(rotate);
-                }
-            }
-            
-            rotate();
-        }
-        
-        // 透明度アニメーション
-        function animateOpacity(object, minOpacity, maxOpacity) {
-            const originalOpacity = object.material.opacity;
-            const duration = 1000; // ミリ秒
-            const startTime = Date.now();
-            
-            function fade() {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                
-                if (progress < 0.5) {
-                    // フェードアウト
-                    object.material.opacity = originalOpacity - (originalOpacity - minOpacity) * (progress * 2);
-                } else {
-                    // フェードイン
-                    object.material.opacity = minOpacity + (maxOpacity - minOpacity) * ((progress - 0.5) * 2);
-                }
-                
-                if (progress < 1) {
-                    requestAnimationFrame(fade);
-                } else {
-                    // 元の透明度に戻す
-                    object.material.opacity = originalOpacity;
-                }
-            }
-            
-            fade();
-        }
-        
-        // スケールアニメーション
-        function animateScale(object, scale) {
-            const originalScale = { x: object.scale.x, y: object.scale.y, z: object.scale.z };
-            const duration = 800; // ミリ秒
-            const startTime = Date.now();
-            
-            function scaleObject() {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                
-                // イージング関数
-                const easeOutElastic = t => {
-                    const p = 0.3;
-                    return Math.pow(2, -10 * t) * Math.sin((t - p / 4) * (2 * Math.PI) / p) + 1;
-                };
-                
-                if (progress < 0.5) {
-                    // 拡大
-                    const t = progress * 2;
-                    object.scale.set(
-                        originalScale.x * (1 + (scale - 1) * t),
-                        originalScale.y * (1 + (scale - 1) * t),
-                        originalScale.z * (1 + (scale - 1) * t)
-                    );
-                } else {
-                    // 縮小して元に戻る
-                    const t = easeOutElastic((progress - 0.5) * 2);
-                    object.scale.set(
-                        originalScale.x * (1 + (scale - 1) * (1 - t)),
-                        originalScale.y * (1 + (scale - 1) * (1 - t)),
-                        originalScale.z * (1 + (scale - 1) * (1 - t))
-                    );
-                }
-                
-                if (progress < 1) {
-                    requestAnimationFrame(scaleObject);
-                }
-            }
-            
-            scaleObject();
         }
         
         // ツールチップ表示
@@ -415,6 +592,7 @@
             mask = new THREE.Mesh(maskGeometry, maskMaterial);
             mask.rotation.x = Math.PI / 2;
             mask.position.set(0, 0, -2.5);
+            mask.userData = { time: 0 }; // アニメーション用のタイムパラメータを保持
             scene.add(mask);
             
             // 断絶を表現する壁
@@ -458,7 +636,8 @@
                     radius: radius,
                     angle: angle,
                     verticalSpeed: 0.002 + Math.random() * 0.002,
-                    verticalPos: cube.position.y
+                    verticalPos: cube.position.y,
+                    originalZ: cube.position.z // 元のZ座標を保存
                 });
             }
             
@@ -505,45 +684,76 @@
             animations.push(() => {
                 time += 0.002;
                 
+                // 時間パラメータを更新
+                mask.userData.time = time;
+                
                 // 内面（黒い球体）のアニメーション
-                innerSphere.scale.x = 1 + Math.sin(time * 0.05) * 0.02;
-                innerSphere.scale.y = 1 + Math.sin(time * 0.05) * 0.02;
-                innerSphere.scale.z = 1 + Math.sin(time * 0.05) * 0.02;
+                if (!isDragging || selectedObject !== innerSphere) {
+                    innerSphere.scale.x = 1 + Math.sin(time * 0.05) * 0.02;
+                    innerSphere.scale.y = 1 + Math.sin(time * 0.05) * 0.02;
+                    innerSphere.scale.z = 1 + Math.sin(time * 0.05) * 0.02;
+                }
                 
                 // 仮面のアニメーション
-                mask.position.x = Math.cos(time * 0.15) * 2.5;
-                mask.position.z = Math.sin(time * 0.15) * 2.5;
-                mask.rotation.z = time * 0.05;
+                if (!isDragging || selectedObject !== mask) {
+                    // 内面球体が動いていれば、それに追従
+                    if (!isDragging || selectedObject !== innerSphere) {
+                        mask.position.x = Math.cos(time * 0.15) * 2.5 + innerSphere.position.x * 0.7;
+                        mask.position.y = innerSphere.position.y * 0.7;
+                        mask.position.z = Math.sin(time * 0.15) * 2.5 - 2.5;
+                    }
+                    mask.rotation.z = time * 0.05;
+                }
                 
                 // 他者（立方体）のアニメーション
                 cubes.forEach(cube => {
-                    cube.angle += cube.speed;
-                    cube.mesh.position.x = Math.cos(cube.angle) * cube.radius;
-                    cube.mesh.position.z = -3 - Math.random() * 0.5 + Math.sin(time * 0.03) * 1.5;
-                    cube.mesh.position.y = cube.verticalPos + Math.sin(time * cube.verticalSpeed * 0.8) * 0.3;
-                    cube.mesh.rotation.x += cube.speed * 0.2;
-                    cube.mesh.rotation.y += cube.speed * 0.1;
+                    if (!isDragging || selectedObject !== cube.mesh) {
+                        cube.angle += cube.speed;
+                        
+                        // 浮遊運動（内面球体が動いていれば、その影響を受ける）
+                        const influence = 1 - Math.min(1, cube.mesh.position.distanceTo(innerSphere.position) / 15);
+                        
+                        cube.mesh.position.x = Math.cos(cube.angle) * cube.radius + innerSphere.position.x * influence * 0.5;
+                        
+                        if (!isDragging || selectedObject !== wall) {
+                            cube.mesh.position.z = cube.originalZ + Math.sin(time * 0.03) * 1.5;
+                        }
+                        
+                        cube.mesh.position.y = cube.verticalPos + Math.sin(time * cube.verticalSpeed * 0.8) * 0.3 + innerSphere.position.y * influence * 0.3;
+                        
+                        cube.mesh.rotation.x += cube.speed * 0.2;
+                        cube.mesh.rotation.y += cube.speed * 0.1;
+                    }
                 });
                 
                 // 恥の記憶の糸のアニメーション
                 lines.forEach(line => {
                     line.angle += line.speed * 0.05;
                     const positions = line.line.geometry.attributes.position.array;
-                    positions[0] = Math.cos(line.angle) * 2;
-                    positions[1] = Math.sin(line.angle) * 2;
+                    
+                    // 球体の位置を基準に
+                    positions[0] = Math.cos(line.angle) * 2 + innerSphere.position.x;
+                    positions[1] = Math.sin(line.angle) * 2 + innerSphere.position.y;
+                    
+                    // 糸の先端はより激しく揺れる
                     const endRadius = 3 + Math.sin(time * 0.05 + line.angle * 0.2) * 0.6;
-                    positions[3] = Math.cos(line.angle) * endRadius;
-                    positions[4] = Math.sin(line.angle) * endRadius;
+                    positions[3] = Math.cos(line.angle) * endRadius + innerSphere.position.x * 0.7;
+                    positions[4] = Math.sin(line.angle) * endRadius + innerSphere.position.y * 0.7;
+                    
                     line.line.geometry.attributes.position.needsUpdate = true;
                 });
                 
                 // カメラをゆっくり動かす
-                camera.position.x = Math.sin(time * 0.01) * 2.5;
-                camera.position.y = 1 + Math.sin(time * 0.008) * 0.3;
-                camera.lookAt(0, 0, 0);
+                if (!isDragging) {
+                    camera.position.x = Math.sin(time * 0.01) * 2.5;
+                    camera.position.y = 1 + Math.sin(time * 0.008) * 0.3;
+                }
+                camera.lookAt(innerSphere.position.x * 0.5, innerSphere.position.y * 0.5, 0);
                 
                 // マウスインタラクションの更新
-                checkIntersection();
+                if (!isDragging) {
+                    checkIntersection();
+                }
                 
                 renderer.render(scene, camera);
             });
