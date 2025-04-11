@@ -5,6 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>人間失格</title>
     <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            max-width: 250px;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .interaction-hint {
+            position: absolute;
+            bottom: 70px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 10;
+        }
+    </style>
 </head>
 <body>
     <div class="work-container">
@@ -14,11 +40,15 @@
             <canvas id="canvas"></canvas>
         </div>
         
+        <div class="interaction-hint">オブジェクトをクリック/タッチして反応を見る</div>
+        
         <div class="work-info">
             <p class="quote">「恥の多い生涯を送って来ました。」</p>
             <p>この3D表現では、太宰治「人間失格」の核心的なテーマを視覚化しています。</p>
             <p><strong>中央の黒い球体</strong>は葉蔵の暗い内面世界と苦悩、<strong>白い半円形の仮面</strong>は社会で演じる「道化」の姿、<strong>周囲の浮遊する立方体</strong>は他者や社会との断絶を表現しています。<strong>赤い線</strong>は「恥の記憶」として葉蔵を苦しめ続ける過去の象徴です。</p>
         </div>
+        
+        <div class="tooltip" id="tooltip"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -32,14 +62,304 @@
         const renderers = [];
         const animations = [];
         
+        // インタラクション用の変数
+        let raycaster, mouse;
+        let innerSphere, mask, wall;
+        let cubes = [];
+        let lines = [];
+        let intersectedObject = null;
+        let originalColors = new Map();
+        const tooltip = document.getElementById('tooltip');
+        
         function init() {
+            // インタラクション用の初期化
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
             // Three.jsシーンの初期化
             initNingenShikkaku();
+            
+            // マウス/タッチイベントのリスナーを設定
+            const canvas = document.getElementById('canvas');
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('click', onClick);
+            canvas.addEventListener('touchstart', onTouchStart, { passive: false });
             
             // 共通設定
             handleResize(cameras, renderers);
             startAnimationLoop(animations);
             setupInfoToggle();
+        }
+        
+        // マウス移動時の処理
+        function onMouseMove(event) {
+            event.preventDefault();
+            
+            // マウス位置を正規化（-1から1の範囲）
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            checkIntersection();
+        }
+        
+        // クリック時の処理
+        function onClick(event) {
+            event.preventDefault();
+            
+            if (intersectedObject) {
+                animateClickedObject(intersectedObject);
+                showTooltipForObject(intersectedObject, event.clientX, event.clientY);
+            }
+        }
+        
+        // タッチ開始時の処理
+        function onTouchStart(event) {
+            event.preventDefault();
+            
+            if (event.touches.length > 0) {
+                const touch = event.touches[0];
+                
+                // タッチ位置を正規化
+                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+                
+                checkIntersection();
+                
+                if (intersectedObject) {
+                    animateClickedObject(intersectedObject);
+                    showTooltipForObject(intersectedObject, touch.clientX, touch.clientY);
+                }
+            }
+        }
+        
+        // 交差判定
+        function checkIntersection() {
+            // 前回の交差オブジェクトの色を元に戻す
+            if (intersectedObject && originalColors.has(intersectedObject.uuid)) {
+                if (intersectedObject.material) {
+                    intersectedObject.material.color.set(originalColors.get(intersectedObject.uuid));
+                    intersectedObject.material.emissive?.set(0x000000);
+                }
+            }
+            
+            // レイキャスターを更新
+            raycaster.setFromCamera(mouse, cameras[0]);
+            
+            // 検出対象オブジェクト
+            const targetObjects = [innerSphere, mask, wall, ...cubes.map(c => c.mesh)];
+            
+            // 交差判定
+            const intersects = raycaster.intersectObjects(targetObjects);
+            
+            // 新しい交差オブジェクト
+            intersectedObject = intersects.length > 0 ? intersects[0].object : null;
+            
+            // 交差したオブジェクトの色を変更
+            if (intersectedObject && intersectedObject.material) {
+                // 元の色を保存
+                if (!originalColors.has(intersectedObject.uuid)) {
+                    originalColors.set(intersectedObject.uuid, intersectedObject.material.color.clone());
+                }
+                
+                // ハイライト色
+                intersectedObject.material.emissive?.set(0x202020);
+                document.body.style.cursor = 'pointer';
+            } else {
+                document.body.style.cursor = 'default';
+            }
+        }
+        
+        // クリックしたオブジェクトのアニメーション
+        function animateClickedObject(object) {
+            // オブジェクトによって異なるアニメーション
+            if (object === innerSphere) {
+                // 黒い球体の場合
+                animatePulse(object, 1.2);
+            } else if (object === mask) {
+                // 仮面の場合
+                animateRotation(object, Math.PI * 2);
+            } else if (object === wall) {
+                // 壁の場合
+                animateOpacity(object, 0.1, 0.6);
+            } else {
+                // 立方体の場合
+                const cube = cubes.find(c => c.mesh === object);
+                if (cube) {
+                    animateScale(object, 1.5);
+                    
+                    // 立方体の色を一時的に変更
+                    const originalColor = object.material.color.clone();
+                    object.material.color.set(0x7090ff);
+                    
+                    setTimeout(() => {
+                        object.material.color.copy(originalColor);
+                    }, 1000);
+                }
+            }
+        }
+        
+        // パルスアニメーション（拡大と縮小）
+        function animatePulse(object, scale) {
+            const originalScale = { x: object.scale.x, y: object.scale.y, z: object.scale.z };
+            const duration = 1000; // ミリ秒
+            const startTime = Date.now();
+            
+            function pulse() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // イージング関数で滑らかに
+                const easeOutBack = t => 1 + (--t) * t * ((2.5 + 1) * t + 2.5);
+                
+                if (progress < 0.5) {
+                    // 拡大
+                    const t = easeOutBack(progress * 2);
+                    object.scale.set(
+                        originalScale.x + (scale - 1) * originalScale.x * t,
+                        originalScale.y + (scale - 1) * originalScale.y * t,
+                        originalScale.z + (scale - 1) * originalScale.z * t
+                    );
+                } else {
+                    // 縮小
+                    const t = easeOutBack((progress - 0.5) * 2);
+                    object.scale.set(
+                        originalScale.x + (scale - 1) * originalScale.x * (1 - t),
+                        originalScale.y + (scale - 1) * originalScale.y * (1 - t),
+                        originalScale.z + (scale - 1) * originalScale.z * (1 - t)
+                    );
+                }
+                
+                if (progress < 1) {
+                    requestAnimationFrame(pulse);
+                }
+            }
+            
+            pulse();
+        }
+        
+        // 回転アニメーション
+        function animateRotation(object, angle) {
+            const originalRotation = object.rotation.z;
+            const duration = 1000; // ミリ秒
+            const startTime = Date.now();
+            
+            function rotate() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // イージング関数
+                const easeOutCirc = t => Math.sqrt(1 - Math.pow(t - 1, 2));
+                const t = easeOutCirc(progress);
+                
+                object.rotation.z = originalRotation + angle * t;
+                
+                if (progress < 1) {
+                    requestAnimationFrame(rotate);
+                }
+            }
+            
+            rotate();
+        }
+        
+        // 透明度アニメーション
+        function animateOpacity(object, minOpacity, maxOpacity) {
+            const originalOpacity = object.material.opacity;
+            const duration = 1000; // ミリ秒
+            const startTime = Date.now();
+            
+            function fade() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                if (progress < 0.5) {
+                    // フェードアウト
+                    object.material.opacity = originalOpacity - (originalOpacity - minOpacity) * (progress * 2);
+                } else {
+                    // フェードイン
+                    object.material.opacity = minOpacity + (maxOpacity - minOpacity) * ((progress - 0.5) * 2);
+                }
+                
+                if (progress < 1) {
+                    requestAnimationFrame(fade);
+                } else {
+                    // 元の透明度に戻す
+                    object.material.opacity = originalOpacity;
+                }
+            }
+            
+            fade();
+        }
+        
+        // スケールアニメーション
+        function animateScale(object, scale) {
+            const originalScale = { x: object.scale.x, y: object.scale.y, z: object.scale.z };
+            const duration = 800; // ミリ秒
+            const startTime = Date.now();
+            
+            function scaleObject() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // イージング関数
+                const easeOutElastic = t => {
+                    const p = 0.3;
+                    return Math.pow(2, -10 * t) * Math.sin((t - p / 4) * (2 * Math.PI) / p) + 1;
+                };
+                
+                if (progress < 0.5) {
+                    // 拡大
+                    const t = progress * 2;
+                    object.scale.set(
+                        originalScale.x * (1 + (scale - 1) * t),
+                        originalScale.y * (1 + (scale - 1) * t),
+                        originalScale.z * (1 + (scale - 1) * t)
+                    );
+                } else {
+                    // 縮小して元に戻る
+                    const t = easeOutElastic((progress - 0.5) * 2);
+                    object.scale.set(
+                        originalScale.x * (1 + (scale - 1) * (1 - t)),
+                        originalScale.y * (1 + (scale - 1) * (1 - t)),
+                        originalScale.z * (1 + (scale - 1) * (1 - t))
+                    );
+                }
+                
+                if (progress < 1) {
+                    requestAnimationFrame(scaleObject);
+                }
+            }
+            
+            scaleObject();
+        }
+        
+        // ツールチップ表示
+        function showTooltipForObject(object, x, y) {
+            let content = "";
+            
+            if (object === innerSphere) {
+                content = "葉蔵の内面<br><em>「私は、この自我の意識に就いてなら、あるいは、人後に落ちぬ見識を持っていたかもしれません。」</em>";
+            } else if (object === mask) {
+                content = "道化の仮面<br><em>「私は、これまで何度となく、人間の不可解を思い、人間の混乱した精神をもてあました。」</em>";
+            } else if (object === wall) {
+                content = "断絶の壁<br><em>「人間と私の間に、深い深い溝があって、私はその溝を越える術を知らぬ者のようにと。」</em>";
+            } else {
+                const cube = cubes.find(c => c.mesh === object);
+                if (cube) {
+                    content = "他者<br><em>「私には、人間の生活というものが、見当つかないのです。」</em>";
+                }
+            }
+            
+            if (content) {
+                tooltip.innerHTML = content;
+                tooltip.style.left = `${x + 15}px`;
+                tooltip.style.top = `${y + 15}px`;
+                tooltip.style.opacity = 1;
+                
+                // 一定時間後に非表示
+                setTimeout(() => {
+                    tooltip.style.opacity = 0;
+                }, 3000);
+            }
         }
         
         // 人間失格のシーン初期化
@@ -82,7 +402,7 @@
                 metalness: 0.2,
                 emissive: 0x000000
             });
-            const innerSphere = new THREE.Mesh(innerSphereGeometry, innerSphereMaterial);
+            innerSphere = new THREE.Mesh(innerSphereGeometry, innerSphereMaterial);
             scene.add(innerSphere);
             
             // 仮面（道化の表の顔）
@@ -92,7 +412,7 @@
                 roughness: 0.3,
                 metalness: 0.1
             });
-            const mask = new THREE.Mesh(maskGeometry, maskMaterial);
+            mask = new THREE.Mesh(maskGeometry, maskMaterial);
             mask.rotation.x = Math.PI / 2;
             mask.position.set(0, 0, -2.5);
             scene.add(mask);
@@ -105,12 +425,12 @@
                 opacity: 0.4,
                 roughness: 0.8
             });
-            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+            wall = new THREE.Mesh(wallGeometry, wallMaterial);
             wall.position.z = -5;
             scene.add(wall);
             
             // 他者を表す浮遊する立方体（社会、他者）
-            const cubes = [];
+            cubes = [];
             for (let i = 0; i < 15; i++) {
                 const size = 0.5 + Math.random() * 0.5;
                 const cubeGeometry = new THREE.BoxGeometry(size, size, size);
@@ -150,7 +470,7 @@
                 opacity: 0.4
             });
             
-            const lines = [];
+            lines = [];
             for (let i = 0; i < lineCount; i++) {
                 const points = [];
                 const startAngle = Math.random() * Math.PI * 2;
@@ -221,6 +541,9 @@
                 camera.position.x = Math.sin(time * 0.01) * 2.5;
                 camera.position.y = 1 + Math.sin(time * 0.008) * 0.3;
                 camera.lookAt(0, 0, 0);
+                
+                // マウスインタラクションの更新
+                checkIntersection();
                 
                 renderer.render(scene, camera);
             });
