@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人間失格 - 3D表現 | 日本文学3D表現ギャラリー</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="work-container">
+        <div class="work-title-header">人間失格 - 太宰治</div>
+        <a href="../index.html" class="back-button">← ギャラリーに戻る</a>
+        
+        <div class="canvas-container">
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="work-info">
+            <p class="quote">「恥の多い生涯を送って来ました。」</p>
+            <p>この3D表現では、太宰治「人間失格」の核心的なテーマを視覚化しています。</p>
+            <p><strong>中央の黒い球体</strong>は葉蔵の暗い内面世界と苦悩、<strong>白い半円形の仮面</strong>は社会で演じる「道化」の姿、<strong>周囲の浮遊する立方体</strong>は他者や社会との断絶を表現しています。<strong>赤い線</strong>は「恥の記憶」として葉蔵を苦しめ続ける過去の象徴です。</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="../js/common.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', init);
+
+        // シーン、カメラ、レンダラーの設定
+        const scenes = [];
+        const cameras = [];
+        const renderers = [];
+        const animations = [];
+        
+        function init() {
+            // Three.jsシーンの初期化
+            initNingenShikkaku();
+            
+            // 共通設定
+            handleResize(cameras, renderers);
+            startAnimationLoop(animations);
+            setupInfoToggle();
+        }
+        
+        // 人間失格のシーン初期化
+        function initNingenShikkaku() {
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x080808);
+            scene.fog = new THREE.FogExp2(0x000000, 0.035);
+            scenes.push(scene);
+            
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 15;
+            camera.position.y = 1;
+            cameras.push(camera);
+            
+            const renderer = new THREE.WebGLRenderer({ 
+                canvas: document.getElementById('canvas'),
+                antialias: true 
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            optimizeForPerformance(renderer, isMobileDevice());
+            renderers.push(renderer);
+            
+            // ライト設定
+            const ambientLight = new THREE.AmbientLight(0x202020);
+            scene.add(ambientLight);
+            
+            const mainLight = new THREE.DirectionalLight(0x9090ff, 0.8);
+            mainLight.position.set(5, 8, 7);
+            scene.add(mainLight);
+            
+            const redLight = new THREE.PointLight(0xff4040, 0.5, 20);
+            redLight.position.set(-5, 2, 3);
+            scene.add(redLight);
+            
+            // 主人公の内面（黒い球体）
+            const innerSphereGeometry = new THREE.SphereGeometry(2, 32, 32);
+            const innerSphereMaterial = new THREE.MeshStandardMaterial({
+                color: 0x101010,
+                roughness: 0.9,
+                metalness: 0.2,
+                emissive: 0x000000
+            });
+            const innerSphere = new THREE.Mesh(innerSphereGeometry, innerSphereMaterial);
+            scene.add(innerSphere);
+            
+            // 仮面（道化の表の顔）
+            const maskGeometry = new THREE.CylinderGeometry(1.5, 1.5, 0.3, 32, 1, false, 0, Math.PI);
+            const maskMaterial = new THREE.MeshStandardMaterial({
+                color: 0xf0f0f0,
+                roughness: 0.3,
+                metalness: 0.1
+            });
+            const mask = new THREE.Mesh(maskGeometry, maskMaterial);
+            mask.rotation.x = Math.PI / 2;
+            mask.position.set(0, 0, -2.5);
+            scene.add(mask);
+            
+            // 断絶を表現する壁
+            const wallGeometry = new THREE.BoxGeometry(30, 8, 0.2);
+            const wallMaterial = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                transparent: true,
+                opacity: 0.4,
+                roughness: 0.8
+            });
+            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+            wall.position.z = -5;
+            scene.add(wall);
+            
+            // 他者を表す浮遊する立方体（社会、他者）
+            const cubes = [];
+            for (let i = 0; i < 15; i++) {
+                const size = 0.5 + Math.random() * 0.5;
+                const cubeGeometry = new THREE.BoxGeometry(size, size, size);
+                const cubeMaterial = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color(0.3 + Math.random() * 0.3, 0.3 + Math.random() * 0.3, 0.4 + Math.random() * 0.3),
+                    roughness: 0.7,
+                    metalness: 0.2
+                });
+                const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+                
+                // 円状に配置（しかし主人公には近づかない）
+                const radius = 7 + Math.random() * 6;
+                const angle = Math.random() * Math.PI * 2;
+                cube.position.x = Math.cos(angle) * radius;
+                cube.position.y = Math.sin(angle) * radius / 2;
+                cube.position.z = -3 - Math.random() * 8;
+                
+                cube.rotation.x = Math.random() * Math.PI;
+                cube.rotation.y = Math.random() * Math.PI;
+                
+                scene.add(cube);
+                cubes.push({
+                    mesh: cube,
+                    speed: 0.003 + Math.random() * 0.004,
+                    radius: radius,
+                    angle: angle,
+                    verticalSpeed: 0.002 + Math.random() * 0.002,
+                    verticalPos: cube.position.y
+                });
+            }
+            
+            // 恥の記憶の糸
+            const lineCount = 15;
+            const lineMaterial = new THREE.LineBasicMaterial({ 
+                color: 0xff3030,
+                transparent: true,
+                opacity: 0.4
+            });
+            
+            const lines = [];
+            for (let i = 0; i < lineCount; i++) {
+                const points = [];
+                const startAngle = Math.random() * Math.PI * 2;
+                const startRadius = 2; // 球の表面から始まる
+                
+                points.push(new THREE.Vector3(
+                    Math.cos(startAngle) * startRadius,
+                    Math.sin(startAngle) * startRadius,
+                    0
+                ));
+                
+                // 外に向かって伸びる線（恥の記憶）
+                const endRadius = 3 + Math.random() * 2;
+                points.push(new THREE.Vector3(
+                    Math.cos(startAngle) * endRadius,
+                    Math.sin(startAngle) * endRadius,
+                    (Math.random() - 0.5) * 2
+                ));
+                
+                const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(lineGeometry, lineMaterial);
+                scene.add(line);
+                lines.push({
+                    line: line,
+                    angle: startAngle,
+                    speed: 0.01 + Math.random() * 0.01
+                });
+            }
+            
+            // アニメーション関数を定義
+            let time = 0;
+            animations.push(() => {
+                time += 0.002;
+                
+                // 内面（黒い球体）のアニメーション
+                innerSphere.scale.x = 1 + Math.sin(time * 0.05) * 0.02;
+                innerSphere.scale.y = 1 + Math.sin(time * 0.05) * 0.02;
+                innerSphere.scale.z = 1 + Math.sin(time * 0.05) * 0.02;
+                
+                // 仮面のアニメーション
+                mask.position.x = Math.cos(time * 0.15) * 2.5;
+                mask.position.z = Math.sin(time * 0.15) * 2.5;
+                mask.rotation.z = time * 0.05;
+                
+                // 他者（立方体）のアニメーション
+                cubes.forEach(cube => {
+                    cube.angle += cube.speed;
+                    cube.mesh.position.x = Math.cos(cube.angle) * cube.radius;
+                    cube.mesh.position.z = -3 - Math.random() * 0.5 + Math.sin(time * 0.03) * 1.5;
+                    cube.mesh.position.y = cube.verticalPos + Math.sin(time * cube.verticalSpeed * 0.8) * 0.3;
+                    cube.mesh.rotation.x += cube.speed * 0.2;
+                    cube.mesh.rotation.y += cube.speed * 0.1;
+                });
+                
+                // 恥の記憶の糸のアニメーション
+                lines.forEach(line => {
+                    line.angle += line.speed * 0.05;
+                    const positions = line.line.geometry.attributes.position.array;
+                    positions[0] = Math.cos(line.angle) * 2;
+                    positions[1] = Math.sin(line.angle) * 2;
+                    const endRadius = 3 + Math.sin(time * 0.05 + line.angle * 0.2) * 0.6;
+                    positions[3] = Math.cos(line.angle) * endRadius;
+                    positions[4] = Math.sin(line.angle) * endRadius;
+                    line.line.geometry.attributes.position.needsUpdate = true;
+                });
+                
+                // カメラをゆっくり動かす
+                camera.position.x = Math.sin(time * 0.01) * 2.5;
+                camera.position.y = 1 + Math.sin(time * 0.008) * 0.3;
+                camera.lookAt(0, 0, 0);
+                
+                renderer.render(scene, camera);
+            });
+        }
+    </script>
+</body>
+</html>

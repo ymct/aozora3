@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日本文学3D表現ギャラリー</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>日本文学3D表現ギャラリー</h1>
+            <div class="subtitle">文学作品の世界観を3Dで視覚化する試み</div>
+        </header>
+        
+        <div class="gallery">
+            <div class="work-card" onclick="location.href='pages/ningen-shikkaku.html';">
+                <div class="thumbnail" id="thumbnail-ningen">
+                    <!-- サムネイルはJavaScriptで描画 -->
+                </div>
+                <div class="work-title">人間失格</div>
+                <div class="author">太宰 治</div>
+                <div class="overlay">
+                    <div class="view-button">3D表現を見る</div>
+                </div>
+            </div>
+            
+            <div class="work-card" onclick="location.href='pages/tsuyu-no-atosaki.html';">
+                <div class="thumbnail" id="thumbnail-tsuyu">
+                    <!-- サムネイルはJavaScriptで描画 -->
+                </div>
+                <div class="work-title">つゆのあとさき</div>
+                <div class="author">永井 荷風</div>
+                <div class="overlay">
+                    <div class="view-button">3D表現を見る</div>
+                </div>
+            </div>
+            
+            <div class="work-card" onclick="location.href='pages/football-manen-gannen.html';">
+                <div class="thumbnail" id="thumbnail-football">
+                    <!-- サムネイルはJavaScriptで描画 -->
+                </div>
+                <div class="work-title">万延元年のフットボール</div>
+                <div class="author">大江 健三郎</div>
+                <div class="overlay">
+                    <div class="view-button">3D表現を見る</div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>&copy; 2025 日本文学3D表現ギャラリー</p>
+            <p class="github-link"><a href="https://github.com/yourusername/literary-3d-gallery" target="_blank">GitHub</a>でソースコードを見る</p>
+        </footer>
+    </div>
+
+    <script src="js/thumbnails.js"></script>
+</body>
+</html>
